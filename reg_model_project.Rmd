@@ -1,0 +1,134 @@
+---
+title: "Modeling and prediction for movies"
+author: "Shaohan Wang"
+date: "08/19/2020"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Front Matter
+
+```{r message=FALSE, warning=FALSE}
+# clean up workspace environment
+rm(list = ls())
+```
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(GGally)
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+* * *
+
+## Part 1: Data
+* movies dataset has 651 observations with 32 variables and include randomly sampled movies produced and released before 2016.
+
+* Each case here corresponds to an individual movie with detailed information. This dataset are collected mainly based on observation which means there is no random assignment, so we cannot establish causality. Besides, because the movies included are randomly selected, we can conclude generalizability to all of movies produced and released before 2016. However, we may consider convenience sampling bias here because some movies' information may be much easier to obtain. 
+
+* * *
+
+## Part 2: Research question
+
+**Is there an association among ratings on IMDB and the number of votes on IMDB, whether or not the movie was nominated for a best picture Oscar, audience score on Rotten Tomatoes, critics score on Rotten Tomatoes?**
+
+* This question allows us to predict the movie ratings on IMDB by using multiple linear regression model with some specific and appropriate explanatory variables in this dataset. The variables used here are imdb_rating, imdb_num_votes, critics_score, audience_score, best_pic_nom. 
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+```{r message=FALSE, warning=FALSE}
+# find whether or not the movie was nominated for a best picture Oscar will significantly influence the ratings and the number of voters
+movies %>%
+  group_by(best_pic_nom) %>%
+  summarise(mean_rating = mean(imdb_rating),
+            mean_number_voters = mean(imdb_num_votes),
+            mean_critics_score = mean(critics_score),
+            mean_audience_score = mean(audience_score))
+
+# visualization
+movies %>%
+  ggplot(aes(x = imdb_rating)) +
+  geom_density(aes(fill = best_pic_nom, color = best_pic_nom), alpha = 0.5) +
+  theme(legend.position = "top")
+```
+
+* According to the graph, movies which were nominated for a best picture Oscar have relatively higher ratings on IMDB. Besides, we also find that those movies have relatively more voters on IMDB and higher critics' scores and audience's scores on Rotten Tomatoes. 
+
+* * *
+
+## Part 4: Modeling
+
+```{r fig.height=6, fig.width=6, message=FALSE, warning=FALSE}
+# check collinearity
+movies %>%
+  summarise(cor(imdb_num_votes, critics_score),
+            cor(imdb_num_votes, audience_score),
+            cor(critics_score, audience_score)) # remove audience_score because of the collinearity
+
+# set the model
+model <- lm(imdb_rating ~ imdb_num_votes + critics_score + best_pic_nom, data = movies) 
+summary(model) # remove best_pic_nom because it is not statistically significant
+
+# build our final model
+model2 <- lm(imdb_rating ~ imdb_num_votes + critics_score, data = movies)
+summary(model2)
+model2[['model']] # view the model
+
+# use diagnostic plot to check the conditions for this model
+ggplot(data = model2, aes(x = model2$residuals)) +
+         geom_histogram()  
+
+ggplot(data = model2, aes(sample = .resid)) +
+  stat_qq() +
+  stat_qq_line() # nearly normal
+
+ggplot() +
+  geom_point(aes(x = model2$fitted.values, y = model2$residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") # constant variability
+
+plot(model2$residuals)
+abline(h = 0) # independence residuals
+
+```
+
+* By checking collinearity, we remove the predictor audience_score because we will have nothing new by adding it in our model. Besides, by using backward elimination, we remove the explanatory variable best_pic_nom due to the high p-value. Also, by using diagnostic plots, we can conclude that the conditions for this model are reasonable. Hence, now we obtain our multiple linear regression model with all significant predictors.
+
+* * *
+
+## Part 5: Prediction
+
+```{r message=FALSE, warning=FALSE}
+# Pick a movie from 2016
+Zootopia <- data.frame(imdb_num_votes = as.integer(420164), critics_score = as.numeric(98))
+
+# do the prediction by our model
+predict(model2, Zootopia)
+
+# construct a prediction interval
+predict(model2, Zootopia, interval = "prediction", level = 0.95)
+```
+* I choose Zootopia(2016) to do the prediction by using our multiple linear regression model here. The fitted value I obtain is around **8.241** and the model predicts that the 95% confidence interval is **(6.907,9.575)**. The actual IMDB rating is **8.0** which is included in this 95% confidence interval.  
+
+* * *
+
+## Part 6: Conclusion
+* In conclusion, there is an association among ratings on IMDB and the number of votes on IMDB, critics score on Rotten Tomatoes. Because of the collinearity and high p-value for our original explanatory variables audience_score and best_pic_nom, I decided to exclude them when building the final multiple linear regression model. 
+
+* However, the final model still presents a shortcoming because there is a noticeable difference between our predicted IMDB rating and the actual rating of Zootopia. I believe one of the solutions is to add more appropriate and statistically significant explanatory variables which will help the full model yield higher adjusted $R^2$. 
+
